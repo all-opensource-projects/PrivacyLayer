@@ -1,3 +1,4 @@
+export * from './encoding';
 export * from './note';
 export * from './proof';
 export * from './gas';
