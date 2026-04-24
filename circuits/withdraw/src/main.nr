@@ -1,47 +1,40 @@
 // ============================================================
 // PrivacyLayer - Withdrawal Proof Circuit
 // ============================================================
-// The core privacy circuit. Proves ALL of the following in one proof:
+// The core privacy circuit entrypoint. Delegates to the spend module
+// for constraint verification, keeping the public interface clear while
+// encapsulating implementation details and test scaffolding.
 //
-//   1. I know (nullifier, secret) such that:
-//      commitment = Hash(nullifier, secret)
+// The circuit proves:
+//   1. I know (nullifier, secret) such that commitment = Hash(nullifier, secret)
+//   2. The commitment exists in the shielded pool Merkle tree
+//   3. The nullifier_hash is correctly derived (prevents cross-pool replay)
+//   4. The recipient and amount are bound to the proof
 //
-//   2. The commitment exists in the shielded pool Merkle tree:
-//      compute_root(commitment, leaf_index, hash_path) == root
-//
-//   3. The nullifier_hash is correctly derived from the nullifier:
-//      nullifier_hash = Hash(nullifier, root)
-//      (binds the nullifier to this specific root - prevents cross-pool replay)
-//
-//   4. The recipient and amount are bound to the proof:
-//      (prevents front-running / proof reuse attacks)
-//
-// This proof is verified on-chain by the Soroban contract via
-// Stellar Protocol 25 BN254 pairing host functions (CAP-0074).
+// This proof is verified on-chain via Stellar Protocol 25 BN254 pairing
+// host functions (CAP-0074).
 //
 // Inspired by:
-//   - Tornado Cash withdraw.circom (https://github.com/tornadocash/tornado-core)
+//   - Tornado Cash withdraw.circom
 //   - Aztec.nr spend circuit patterns
 //   - Penumbra Spend circuit (groth16)
 // ============================================================
 
-use lib::hash;
-use lib::merkle;
-use lib::validation;
+mod spend;
 
-/// Full withdrawal proof circuit.
+/// Full withdrawal proof circuit entrypoint.
 ///
 /// # Private witnesses (known only to the note holder)
 /// - `nullifier`  : per-note random value; revealed via nullifier_hash
 /// - `secret`     : per-note random value; never revealed
-/// - `leaf_index` : position of commitment in the Merkle tree
+/// - `leaf_index` : position of commitment in the Merkle tree (range: [0, 2^20-1])
 /// - `hash_path`  : Merkle authentication path (siblings at each level)
 ///
 /// # Public inputs (verified on-chain)
-/// - `root`           : Merkle root that proves membership (must be a known historical root)
+/// - `root`           : Merkle root that proves membership
 /// - `nullifier_hash` : Hash(nullifier, root) - prevents double-spend
 /// - `recipient`      : Stellar address hash - prevents front-running
-/// - `amount`         : denomination being withdrawn (e.g. 100_0000000 stroops = 100 XLM)
+/// - `amount`         : denomination being withdrawn
 /// - `relayer`        : optional relayer address hash (0 if none)
 /// - `fee`            : relayer fee (0 if no relayer)
 fn main(
@@ -59,32 +52,19 @@ fn main(
     relayer: pub Field,
     fee: pub Field,
 ) {
-    // -- Step 1: Reconstruct commitment --
-    // commitment = Hash(nullifier, secret)
-    // Same as the deposit step - must match what was stored in the tree
-    let commitment = hash::compute_commitment(nullifier, secret);
-
-    // -- Step 2: Verify Merkle inclusion --
-    // Prove that commitment is a leaf in the tree with the given root
-    merkle::verify_inclusion(commitment, leaf_index, hash_path, root);
-
-    // -- Step 3: Verify nullifier hash --
-    // nullifier_hash = Hash(nullifier, root)
-    // Binding to root prevents the same nullifier being used across different
-    // pool snapshots (replay attack prevention)
-    let computed_nullifier_hash = hash::compute_nullifier_hash(nullifier, root);
-    validation::validate_nullifier_hash(computed_nullifier_hash, nullifier_hash);
-
-    // -- Step 4: Validate withdrawal parameters --
-    // Fee must not exceed amount
-    validation::validate_fee(fee, amount);
-    
-    // Relayer must be zero if fee is zero
-    validation::validate_relayer(relayer, fee);
-    
-    // Bind recipient to prevent front-running
-    // (In Groth16, all pub inputs are automatically bound to the proof)
-    let _ = recipient;
+    // Delegate all constraint verification to the spend module
+    spend::verify_withdrawal_constraints(
+        nullifier,
+        secret,
+        leaf_index,
+        hash_path,
+        root,
+        nullifier_hash,
+        recipient,
+        amount,
+        relayer,
+        fee,
+    );
 }
 
 // ============================================================
