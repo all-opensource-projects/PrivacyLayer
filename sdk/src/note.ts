@@ -1,4 +1,70 @@
-import { randomBytes } from 'crypto';
+import { stableHash32 } from './stable';
+
+type CryptoLike = {
+  getRandomValues<T extends ArrayBufferView | null>(array: T): T;
+};
+
+export interface RandomnessSource {
+  randomBytes(length: number): Uint8Array;
+}
+
+export interface RuntimeRandomnessSourceOptions {
+  runtime?: { crypto?: CryptoLike };
+  enableNodeFallback?: boolean;
+}
+
+function resolveRuntimeCrypto(options: RuntimeRandomnessSourceOptions = {}): CryptoLike {
+  const runtime = options.runtime ?? (globalThis as RuntimeRandomnessSourceOptions['runtime']);
+  if (runtime?.crypto && typeof runtime.crypto.getRandomValues === 'function') {
+    return runtime.crypto;
+  }
+
+  if (options.enableNodeFallback !== false) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const nodeCrypto = require('crypto') as { webcrypto?: CryptoLike };
+      if (nodeCrypto.webcrypto && typeof nodeCrypto.webcrypto.getRandomValues === 'function') {
+        return nodeCrypto.webcrypto;
+      }
+    } catch {
+      // Runtime does not support require('crypto')
+    }
+  }
+
+  throw new Error(
+    'Secure randomness unavailable: no crypto.getRandomValues implementation found in this runtime.'
+  );
+}
+
+/**
+ * RuntimeRandomnessSource uses secure randomness in browser and Node runtimes.
+ */
+export class RuntimeRandomnessSource implements RandomnessSource {
+  private options: RuntimeRandomnessSourceOptions;
+
+  constructor(options: RuntimeRandomnessSourceOptions = {}) {
+    this.options = options;
+  }
+
+  randomBytes(length: number): Uint8Array {
+    if (!Number.isInteger(length) || length <= 0) {
+      throw new Error(`Random byte length must be a positive integer, received: ${length}`);
+    }
+    const out = new Uint8Array(length);
+    resolveRuntimeCrypto(this.options).getRandomValues(out);
+    return out;
+  }
+}
+
+let defaultRandomnessSource: RandomnessSource = new RuntimeRandomnessSource();
+
+export function setDefaultRandomnessSource(source: RandomnessSource): void {
+  defaultRandomnessSource = source;
+}
+
+export function resetDefaultRandomnessSource(): void {
+  defaultRandomnessSource = new RuntimeRandomnessSource();
+}
 
 /**
  * PrivacyLayer Note
@@ -22,13 +88,24 @@ export class Note {
   /**
    * Create a new random note for a specific pool.
    */
-  static generate(poolId: string, amount: bigint): Note {
+  static generate(poolId: string, amount: bigint, randomnessSource: RandomnessSource = defaultRandomnessSource): Note {
     return new Note(
-      randomBytes(31),
-      randomBytes(31),
+      Buffer.from(randomnessSource.randomBytes(31)),
+      Buffer.from(randomnessSource.randomBytes(31)),
       poolId,
       amount
     );
+  }
+
+  /**
+   * Deterministic derivation for fixtures/testing only.
+   * Keep this separate from production randomness.
+   */
+  static deriveDeterministic(seed: Uint8Array | Buffer | string, poolId: string, amount: bigint): Note {
+    const seedBytes = typeof seed === 'string' ? Buffer.from(seed, 'utf8') : Buffer.from(seed);
+    const nullifier = stableHash32('note-nullifier', seedBytes, poolId, amount).subarray(0, 31);
+    const secret = stableHash32('note-secret', seedBytes, poolId, amount).subarray(0, 31);
+    return new Note(Buffer.from(nullifier), Buffer.from(secret), poolId, amount);
   }
 
   /**
@@ -36,9 +113,9 @@ export class Note {
    * compatible with the Noir circuit and Soroban host function.
    */
   getCommitment(): Buffer {
-    // Placeholder: In production, use @noir-lang/barretenberg or similar
-    // for Poseidon(nullifier, secret)
-    return Buffer.alloc(32); 
+    // Placeholder commitment derivation for SDK plumbing tests.
+    // Production should replace this with Poseidon(nullifier, secret).
+    return stableHash32('commitment', this.nullifier, this.secret);
   }
 
   /**

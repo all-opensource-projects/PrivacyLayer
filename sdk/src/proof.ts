@@ -1,4 +1,5 @@
 import { Note } from './note';
+import { normalizeHex, stableHash32 } from './stable';
 
 export interface MerkleProof {
   root: Buffer;
@@ -10,6 +11,52 @@ export interface MerkleProof {
 export interface Groth16Proof {
   proof: Uint8Array;
   publicInputs: string[];
+}
+
+export interface WithdrawalWitness {
+  root: string;
+  nullifier_hash: string;
+  recipient: string;
+  amount: string;
+  relayer: string;
+  fee: string;
+  pool_id: string;
+  nullifier: string;
+  secret: string;
+  leaf_index: string;
+  path_elements: string[];
+  path_indices: string[];
+}
+
+export interface ProofCache {
+  get(key: string): Promise<Uint8Array | Buffer | undefined> | Uint8Array | Buffer | undefined;
+  set(key: string, proof: Uint8Array | Buffer): Promise<void> | void;
+  delete?(key: string): Promise<void> | void;
+}
+
+/**
+ * Lightweight in-memory cache implementation for environments
+ * that do not provide their own storage adapter.
+ */
+export class InMemoryProofCache implements ProofCache {
+  private readonly entries = new Map<string, Buffer>();
+
+  get(key: string): Buffer | undefined {
+    const entry = this.entries.get(key);
+    return entry ? Buffer.from(entry) : undefined;
+  }
+
+  set(key: string, proof: Uint8Array | Buffer): void {
+    this.entries.set(key, Buffer.from(proof));
+  }
+
+  delete(key: string): void {
+    this.entries.delete(key);
+  }
+}
+
+export function computeNullifierHashHex(nullifierHex: string, rootHex: string): string {
+  return stableHash32('nullifier-hash', normalizeHex(nullifierHex), normalizeHex(rootHex)).toString('hex');
 }
 
 /**
@@ -82,17 +129,23 @@ export class ProofGenerator {
     recipient: string,
     relayer: string = 'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF', // Zero address
     fee: bigint = 0n
-  ) {
+  ): Promise<WithdrawalWitness> {
+    const rootHex = merkleProof.root.toString('hex');
+    const nullifierHex = note.nullifier.toString('hex');
+
     return {
-      root: merkleProof.root.toString('hex'),
-      nullifier_hash: '...', // Hash(nullifier) - ideally this should be computed correctly
+      root: rootHex,
+      nullifier_hash: computeNullifierHashHex(nullifierHex, rootHex),
       recipient: recipient,
+      amount: note.amount.toString(),
       relayer: relayer,
       fee: fee.toString(),
-      nullifier: note.nullifier.toString('hex'),
+      pool_id: note.poolId,
+      nullifier: nullifierHex,
       secret: note.secret.toString('hex'),
-      path_elements: merkleProof.pathElements.map(e => e.toString('hex')),
-      path_indices: merkleProof.pathIndices.map(i => i.toString())
+      leaf_index: merkleProof.leafIndex.toString(),
+      path_elements: merkleProof.pathElements.map((e) => e.toString('hex')),
+      path_indices: merkleProof.pathIndices.map((i) => i.toString())
     };
   }
 

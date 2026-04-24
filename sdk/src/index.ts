@@ -3,3 +3,5 @@ export * from './proof';
 export * from './gas';
 export * from './stealth';
 export * from './withdraw';
+export * from './deposit';
+export * from './merkle';
