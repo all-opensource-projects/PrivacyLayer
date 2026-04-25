@@ -1,3 +1,4 @@
+/// <reference types="jest" />
 import fs from 'fs';
 import path from 'path';
 import { Note, NoteBackupError } from '../src/note';
@@ -105,8 +106,8 @@ describe('Golden Vector Corpus', () => {
 
       const relayerAddr =
         v.public_inputs.fee === '0'
-          ? 'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF'
-          : undefined;
+          ? undefined
+          : v._relayer_addr ?? 'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF';
 
       const fee = BigInt(v.public_inputs.fee);
 

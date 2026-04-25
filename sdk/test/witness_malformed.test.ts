@@ -1,3 +1,4 @@
+/// <reference types="jest" />
 import { Note } from '../src/note';
 import { MerkleProof, ProofGenerator } from '../src/proof';
 import { WitnessValidationError } from '../src/errors';
@@ -42,6 +43,21 @@ describe('Malformed Merkle + witness inputs (fail before backend)', () => {
     await expect(ProofGenerator.prepareWitness(note, good, 'not_a_strkey_please')).rejects.toThrow(
       WitnessValidationError
     );
+  });
+
+  it('rejects invalid relayer strkey (structure)', async () => {
+    const note = makeNote();
+    const good: MerkleProof = { root: r32, pathElements: p20(), leafIndex: 0 };
+    await expect(ProofGenerator.prepareWitness(note, good, G, 'invalid_relayer')).rejects.toThrow(
+      WitnessValidationError
+    );
+  });
+
+  it('accepts valid optional relayer (undefined) and uses zero field', async () => {
+    const note = makeNote();
+    const good: MerkleProof = { root: r32, pathElements: p20(), leafIndex: 0 };
+    const witness = await ProofGenerator.prepareWitness(note, good, G); // relayer is undefined
+    expect(witness.relayer).toBe('0'.repeat(64));
   });
 
   it('rejects non-integer leaf index in Merkle layer', async () => {

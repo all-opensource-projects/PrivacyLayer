@@ -1,3 +1,4 @@
+/// <reference types="jest" />
 import fs from 'fs';
 import path from 'path';
 import { Note } from '../src/note';
@@ -39,7 +40,7 @@ describe('Fixture mutation contract (one dimension per case)', () => {
   beforeAll(async () => {
     const note = buildNote(v);
     const mp = buildMerkle(v);
-    good = await ProofGenerator.prepareWitness(note, mp, recipient, recipient, 0n);
+    good = await ProofGenerator.prepareWitness(note, mp, recipient, undefined, 0n);
   });
 
   function mustFailBinding(w: PreparedWitness, part: string) {
