@@ -9,8 +9,8 @@ pub fn zero_leaf() -> Field {
 /// Level 0 = zero_leaf(); level i = H(zero_node(i-1), zero_node(i-1)).
 pub fn zero_node_at_level(level: u32) -> Field {
     let mut z = zero_leaf();
-    for i in 0_u32..20_u32 {
-        if i < level {
+    for i in 0..20 {
+        if (i as u32) < level {
             z = pair::hash_pair(z, z);
         }
     }
@@ -29,9 +29,11 @@ pub fn zero_sibling_path() -> [Field; 20] {
     path
 }
 
-#[cfg(test)]
 mod tests {
-    use super::*;
+
+    use super::zero_leaf;
+    use super::zero_node_at_level;
+    use super::zero_sibling_path;
 
     #[test]
     fn test_zero_leaf_is_nonzero() {

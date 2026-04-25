@@ -21,7 +21,6 @@
 // ============================================================
 
 mod spend;
-#[cfg(test)]
 mod tests;
 
 /// Full withdrawal proof circuit entrypoint.

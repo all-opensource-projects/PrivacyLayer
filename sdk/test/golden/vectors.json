@@ -1,5 +1,7 @@
 {
   "version": 1,
+  "production_tree_depth": 20,
+  "offline_tree_depth": 20,
   "hash_algorithm": "SHA-256 (stand-in for BN254 Pedersen; regenerate with real prover)",
   "description": "PrivacyLayer end-to-end ZK path golden vectors. Covers note preimage → field encoding → nullifier hash → withdrawal public inputs. Used by SDK witness tests and circuit cross-stack fixtures.",
   "vectors": [

@@ -7,6 +7,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '..');
 const artifactsDir = path.join(repoRoot, 'artifacts', 'zk');
 const manifestPath = path.join(artifactsDir, 'manifest.json');
+const PRODUCTION_MERKLE_ROOT_DEPTH = 20;
 
 /**
  * Computes a deterministic SHA-256 checksum for a JSON object.
@@ -39,9 +40,9 @@ function main() {
     }
     manifest.circuits[name].checksum = checksum;
     
-    // Hardcoded depths for this protocol version
+    // Production artifact depth is fixed for this protocol version.
     if (name === 'withdraw') {
-      manifest.circuits[name].root_depth = 20;
+      manifest.circuits[name].root_depth = PRODUCTION_MERKLE_ROOT_DEPTH;
     }
   }
 

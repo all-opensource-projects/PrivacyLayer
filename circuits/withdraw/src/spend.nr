@@ -53,10 +53,11 @@ pub fn verify_withdrawal_constraints(
     let _ = recipient;
 }
 
-#[cfg(test)]
 mod tests {
-    use super::*;
-    use lib::validation::test_helpers::*;
+
+    use super::verify_withdrawal_constraints;
+    use lib::validation::test_helpers::setup_valid_withdrawal;
+
 
     #[test]
     fn test_spend_constraints_happy_path() {

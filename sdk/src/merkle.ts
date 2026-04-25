@@ -1,10 +1,38 @@
-import type { MerkleProof } from './proof';
-import { normalizeHex, stableHash32 } from './stable';
-import { WitnessValidationError } from './errors';
-import { FIELD_MODULUS, MERKLE_NODE_BYTE_LENGTH, MERKLE_TREE_DEPTH } from './zk_constants';
+import type { MerkleProof } from "./proof";
+import { normalizeHex, stableHash32 } from "./stable";
+import { WitnessValidationError } from "./errors";
+import {
+  FIELD_MODULUS,
+  MERKLE_NODE_BYTE_LENGTH,
+  MERKLE_TREE_DEPTH as ZK_MERKLE_TREE_DEPTH,
+} from "./zk_constants";
 
-export { MERKLE_TREE_DEPTH };
-export const MERKLE_MAX_LEAF_INDEX = (1 << MERKLE_TREE_DEPTH) - 1;
+export const PRODUCTION_MERKLE_TREE_DEPTH = ZK_MERKLE_TREE_DEPTH;
+export { PRODUCTION_MERKLE_TREE_DEPTH as MERKLE_TREE_DEPTH };
+
+export function assertMerkleDepth(
+  depth: number,
+  label: string = "merkleDepth",
+): number {
+  if (!Number.isInteger(depth) || depth <= 0 || depth > 31) {
+    throw new WitnessValidationError(
+      `${label} must be an integer in [1, 31], received ${depth}`,
+      "MERKLE_PATH",
+      "structure",
+    );
+  }
+  return depth;
+}
+
+export function merkleMaxLeafIndex(
+  depth: number = PRODUCTION_MERKLE_TREE_DEPTH,
+): number {
+  return (1 << assertMerkleDepth(depth)) - 1;
+}
+
+export const MERKLE_MAX_LEAF_INDEX = merkleMaxLeafIndex(
+  PRODUCTION_MERKLE_TREE_DEPTH,
+);
 
 export type CommitmentLike = Buffer | Uint8Array | string;
 
@@ -17,45 +45,78 @@ export interface MerkleCheckpoint {
   leaves?: string[];
 }
 
+export interface BatchSyncResult {
+  insertedLeafIndices: number[];
+  checkpoint: MerkleCheckpoint;
+  root: Buffer;
+}
+
+export interface MerkleFixtureVector {
+  id: string;
+  depth: number;
+  leafIndex: number;
+  rootHex: string;
+  pathElementsHex: string[];
+}
+
+export interface MerkleFixtureGenerationOptions {
+  depth?: number;
+  leafCount?: number;
+  proveLeafIndices?: number[];
+}
+
 function toLeaf(commitment: CommitmentLike): Buffer {
   if (Buffer.isBuffer(commitment) || commitment instanceof Uint8Array) {
     const bytes = Buffer.from(commitment);
-    return bytes.length === 32 ? bytes : stableHash32('leaf-bytes', bytes);
+    return bytes.length === 32 ? bytes : stableHash32("leaf-bytes", bytes);
   }
 
   const normalized = normalizeHex(commitment);
   if (/^[0-9a-f]+$/i.test(normalized) && normalized.length % 2 === 0) {
-    const bytes = Buffer.from(normalized, 'hex');
-    return bytes.length === 32 ? bytes : stableHash32('leaf-hex', bytes);
+    const bytes = Buffer.from(normalized, "hex");
+    return bytes.length === 32 ? bytes : stableHash32("leaf-hex", bytes);
   }
 
-  return stableHash32('leaf-text', commitment);
+  return stableHash32("leaf-text", commitment);
 }
 
 /**
  * Validate the Merkle proof object before it is encoded for the prover.
  * Catches truncated / overlong paths and invalid index range early.
  */
-export function validateMerkleProof(merkleProof: MerkleProof, depth: number = MERKLE_TREE_DEPTH): void {
+export function validateMerkleProof(
+  merkleProof: MerkleProof,
+  depth: number = PRODUCTION_MERKLE_TREE_DEPTH,
+): void {
+  const expectedDepth = assertMerkleDepth(depth);
+
   if (merkleProof.root.length !== MERKLE_NODE_BYTE_LENGTH) {
     throw new WitnessValidationError(
       `Merkle root must be ${MERKLE_NODE_BYTE_LENGTH} bytes, got ${merkleProof.root.length}`,
-      'MERKLE_PATH',
-      'structure'
+      "MERKLE_PATH",
+      "structure",
     );
   }
   if (merkleProof.root.every((b: number) => b === 0)) {
-    throw new WitnessValidationError('Merkle root must be non-zero', 'MERKLE_ROOT', 'domain');
-  }
-  const rootN = BigInt('0x' + merkleProof.root.toString('hex'));
-  if (rootN >= FIELD_MODULUS) {
-    throw new WitnessValidationError('Merkle root must be a canonical field encoding', 'MERKLE_ROOT', 'domain');
-  }
-  if (merkleProof.pathElements.length !== depth) {
     throw new WitnessValidationError(
-      `Merkle path must have ${depth} elements, got ${merkleProof.pathElements.length}`,
-      'MERKLE_PATH',
-      'structure'
+      "Merkle root must be non-zero",
+      "MERKLE_ROOT",
+      "domain",
+    );
+  }
+  const rootN = BigInt("0x" + merkleProof.root.toString("hex"));
+  if (rootN >= FIELD_MODULUS) {
+    throw new WitnessValidationError(
+      "Merkle root must be a canonical field encoding",
+      "MERKLE_ROOT",
+      "domain",
+    );
+  }
+  if (merkleProof.pathElements.length !== expectedDepth) {
+    throw new WitnessValidationError(
+      `Merkle path must have ${expectedDepth} elements, got ${merkleProof.pathElements.length}`,
+      "MERKLE_PATH",
+      "structure",
     );
   }
   for (let i = 0; i < merkleProof.pathElements.length; i++) {
@@ -63,8 +124,8 @@ export function validateMerkleProof(merkleProof: MerkleProof, depth: number = ME
     if (el.length !== MERKLE_NODE_BYTE_LENGTH) {
       throw new WitnessValidationError(
         `Merkle path element at index ${i} must be ${MERKLE_NODE_BYTE_LENGTH} bytes, got ${el.length}`,
-        'MERKLE_PATH',
-        'structure'
+        "MERKLE_PATH",
+        "structure",
       );
     }
   }
@@ -78,10 +139,8 @@ export class LocalMerkleTree {
   private nextIndex: number;
   private root: Buffer;
 
-  constructor(depth: number = 20) {
-    if (!Number.isInteger(depth) || depth <= 0 || depth > 31) {
-      throw new Error(`Merkle depth must be an integer in [1, 31], received ${depth}`);
-    }
+  constructor(depth: number = PRODUCTION_MERKLE_TREE_DEPTH) {
+    assertMerkleDepth(depth);
 
     this.depth = depth;
     this.zeroes = this.buildZeroes(depth);
@@ -94,21 +153,23 @@ export class LocalMerkleTree {
   static fromCheckpoint(checkpoint: MerkleCheckpoint): LocalMerkleTree {
     if (checkpoint.frontier.length !== checkpoint.depth) {
       throw new Error(
-        `Invalid checkpoint: frontier length ${checkpoint.frontier.length} does not match depth ${checkpoint.depth}`
+        `Invalid checkpoint: frontier length ${checkpoint.frontier.length} does not match depth ${checkpoint.depth}`,
       );
     }
 
     const tree = new LocalMerkleTree(checkpoint.depth);
     tree.nextIndex = checkpoint.nextIndex;
-    tree.root = Buffer.from(normalizeHex(checkpoint.root), 'hex');
+    tree.root = Buffer.from(normalizeHex(checkpoint.root), "hex");
 
     for (let i = 0; i < checkpoint.frontier.length; i += 1) {
       const entry = checkpoint.frontier[i];
-      tree.frontier[i] = entry ? Buffer.from(normalizeHex(entry), 'hex') : null;
+      tree.frontier[i] = entry ? Buffer.from(normalizeHex(entry), "hex") : null;
     }
 
     if (checkpoint.leaves) {
-      tree.trackedLeaves = checkpoint.leaves.map((leaf) => Buffer.from(normalizeHex(leaf), 'hex'));
+      tree.trackedLeaves = checkpoint.leaves.map((leaf) =>
+        Buffer.from(normalizeHex(leaf), "hex"),
+      );
     }
 
     return tree;
@@ -164,12 +225,18 @@ export class LocalMerkleTree {
    * This requires that leaves are available in memory.
    */
   generateProof(leafIndex: number): MerkleProof {
-    if (!Number.isInteger(leafIndex) || leafIndex < 0 || leafIndex >= this.nextIndex) {
-      throw new Error(`Leaf index ${leafIndex} is out of range for tree size ${this.nextIndex}`);
+    if (
+      !Number.isInteger(leafIndex) ||
+      leafIndex < 0 ||
+      leafIndex >= this.nextIndex
+    ) {
+      throw new Error(
+        `Leaf index ${leafIndex} is out of range for tree size ${this.nextIndex}`,
+      );
     }
     if (this.trackedLeaves.length < this.nextIndex) {
       throw new Error(
-        'Cannot generate Merkle proof from checkpoint-only tree state; tracked leaves are unavailable.'
+        "Cannot generate Merkle proof from checkpoint-only tree state; tracked leaves are unavailable.",
       );
     }
 
@@ -189,23 +256,29 @@ export class LocalMerkleTree {
       root: this.getRoot(),
       pathElements,
       pathIndices,
-      leafIndex
+      leafIndex,
     };
   }
 
-  createCheckpoint(options: { includeLeaves?: boolean } = {}): MerkleCheckpoint {
+  createCheckpoint(
+    options: { includeLeaves?: boolean } = {},
+  ): MerkleCheckpoint {
     return {
       version: 1,
       depth: this.depth,
       nextIndex: this.nextIndex,
-      root: this.root.toString('hex'),
-      frontier: this.frontier.map((entry) => (entry ? entry.toString('hex') : null)),
-      leaves: options.includeLeaves ? this.trackedLeaves.map((leaf) => leaf.toString('hex')) : undefined
+      root: this.root.toString("hex"),
+      frontier: this.frontier.map((entry) =>
+        entry ? entry.toString("hex") : null,
+      ),
+      leaves: options.includeLeaves
+        ? this.trackedLeaves.map((leaf) => leaf.toString("hex"))
+        : undefined,
     };
   }
 
   private hashPair(left: Buffer, right: Buffer): Buffer {
-    return stableHash32('merkle-node', left, right);
+    return stableHash32("merkle-node", left, right);
   }
 
   private buildZeroes(depth: number): Buffer[] {
@@ -216,7 +289,11 @@ export class LocalMerkleTree {
     return zeroes;
   }
 
-  private nodeAt(level: number, index: number, memo: Map<string, Buffer>): Buffer {
+  private nodeAt(
+    level: number,
+    index: number,
+    memo: Map<string, Buffer>,
+  ): Buffer {
     const key = `${level}:${index}`;
     const existing = memo.get(key);
     if (existing) {
@@ -245,12 +322,68 @@ export class LocalMerkleTree {
 export function syncCommitmentBatch(
   tree: LocalMerkleTree,
   commitments: CommitmentLike[],
-  checkpointOptions: { includeLeaves?: boolean } = {}
+  checkpointOptions: { includeLeaves?: boolean } = {},
 ): BatchSyncResult {
   const insertedLeafIndices = tree.insertBatch(commitments);
   return {
     insertedLeafIndices,
     checkpoint: tree.createCheckpoint(checkpointOptions),
-    root: tree.getRoot()
+    root: tree.getRoot(),
   };
+}
+
+/**
+ * Deterministic fixture helper for offline tooling.
+ *
+ * Production artifacts remain fixed at depth 20. Tooling can explicitly
+ * request a smaller depth to speed up local debugging and vector generation.
+ */
+export function generateMerkleFixtureVectors(
+  options: MerkleFixtureGenerationOptions = {},
+): MerkleFixtureVector[] {
+  const depth = assertMerkleDepth(
+    options.depth ?? PRODUCTION_MERKLE_TREE_DEPTH,
+    "offlineMerkleDepth",
+  );
+  const leafCount = options.leafCount ?? Math.min(8, 1 << depth);
+  if (
+    !Number.isInteger(leafCount) ||
+    leafCount <= 0 ||
+    leafCount > 1 << depth
+  ) {
+    throw new Error(
+      `leafCount must be an integer in [1, ${1 << depth}], received ${leafCount}`,
+    );
+  }
+
+  const proveLeafIndices =
+    options.proveLeafIndices ??
+    Array.from({ length: Math.min(leafCount, 4) }, (_, i) => i);
+
+  const tree = new LocalMerkleTree(depth);
+  const leaves = Array.from({ length: leafCount }, (_, i) =>
+    stableHash32("fixture-leaf", i),
+  );
+  tree.insertBatch(leaves);
+
+  return proveLeafIndices.map((leafIndex, i) => {
+    if (
+      !Number.isInteger(leafIndex) ||
+      leafIndex < 0 ||
+      leafIndex >= leafCount
+    ) {
+      throw new Error(
+        `proveLeafIndices[${i}] is out of range for leafCount ${leafCount}`,
+      );
+    }
+
+    const proof = tree.generateProof(leafIndex);
+    return {
+      id: `fixture-depth-${depth}-leaf-${leafIndex}`,
+      depth,
+      leafIndex,
+      rootHex: proof.root.toString("hex"),
+      pathElementsHex: proof.pathElements.map((entry) => entry.toString("hex")),
+    };
+  });
 }

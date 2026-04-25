@@ -218,3 +218,42 @@ fn test_zero_leaf_nonzero_path() {
     // And verify_inclusion must accept the computed root
     merkle::verify_inclusion(leaf, index, hash_path, root);
 }
+
+// ============================================================
+// ZK-020: Leaf Index Range Check Tests
+// ============================================================
+
+/// TC-M-13: Index at 2^20 (first out-of-range value) must be rejected.
+#[test(should_fail_with = "leaf index out of range: must be < 2^20")]
+fn test_out_of_range_index_rejected() {
+    let leaf: Field = 42;
+    let hash_path: [Field; 20] = [0; 20];
+    // 2^20 = 1,048,576 is the first invalid index
+    let _ = merkle::compute_root(leaf, 1_048_576, hash_path);
+}
+
+/// TC-M-14: Very large index must be rejected.
+#[test(should_fail_with = "leaf index out of range: must be < 2^20")]
+fn test_very_large_index_rejected() {
+    let leaf: Field = 42;
+    let hash_path: [Field; 20] = [0; 20];
+    let _ = merkle::compute_root(leaf, 100_000_000, hash_path);
+}
+
+/// TC-M-15: Out-of-range index via verify_inclusion must be rejected.
+#[test(should_fail_with = "leaf index out of range: must be < 2^20")]
+fn test_verify_inclusion_out_of_range_index_fails() {
+    let leaf: Field = 42;
+    let hash_path: [Field; 20] = [0; 20];
+    let fake_root: Field = 999;
+    merkle::verify_inclusion(leaf, 1_048_576, hash_path, fake_root);
+}
+
+/// TC-M-16: Index 2^20 + 1 must be rejected (one past the boundary).
+#[test(should_fail_with = "leaf index out of range: must be < 2^20")]
+fn test_index_just_past_boundary_rejected() {
+    let leaf: Field = 42;
+    let hash_path: [Field; 20] = [0; 20];
+    let _ = merkle::compute_root(leaf, 1_048_577, hash_path);
+}
+

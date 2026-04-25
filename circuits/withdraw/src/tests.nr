@@ -326,3 +326,96 @@ fn test_nullifier_hash_differs_across_roots() {
 
     assert(nh_a != nh_b, "same nullifier in different roots must yield different nullifier_hashes");
 }
+
+// ============================================================
+// ZK-020: Leaf Index Boundary and Range Tests
+// ============================================================
+
+#[test(should_fail_with = "leaf index out of range: must be < 2^20")]
+fn test_leaf_index_exceeds_tree_capacity() {
+    let nullifier: Field = 0xAA;
+    let secret: Field    = 0xBB;
+    let pool_id: Field   = 1;
+    let commitment = hash::compute_commitment(nullifier, secret, pool_id);
+
+    // Build a valid path at index 0, then attempt with invalid index 2^20
+    let (hash_path, root) = build_path_at(commitment, 0);
+    let nullifier_hash = hash::compute_nullifier_hash(nullifier, root);
+
+    // 2^20 = 1,048,576 -- first invalid index
+    main(
+        nullifier, secret, 1_048_576, hash_path,
+        pool_id, root, nullifier_hash, 0xFFFF, 100_0000000, 0, 0,
+    );
+}
+
+#[test(should_fail_with = "leaf index out of range: must be < 2^20")]
+fn test_leaf_index_large_out_of_range() {
+    let nullifier: Field = 0xCC;
+    let secret: Field    = 0xDD;
+    let pool_id: Field   = 1;
+    let commitment = hash::compute_commitment(nullifier, secret, pool_id);
+
+    let (hash_path, root) = build_path_at(commitment, 0);
+    let nullifier_hash = hash::compute_nullifier_hash(nullifier, root);
+
+    // Far outside valid range
+    main(
+        nullifier, secret, 99_999_999, hash_path,
+        pool_id, root, nullifier_hash, 0xFFFF, 100_0000000, 0, 0,
+    );
+}
+
+#[test]
+fn test_leaf_index_zero_boundary() {
+    // Index 0 is the minimum valid index
+    let nullifier: Field = 0xEE;
+    let secret: Field    = 0xFF;
+    let pool_id: Field   = 1;
+    let commitment = hash::compute_commitment(nullifier, secret, pool_id);
+    let leaf_index: Field = 0;
+
+    let (hash_path, root) = build_path_at(commitment, leaf_index);
+    let nullifier_hash = hash::compute_nullifier_hash(nullifier, root);
+
+    main(
+        nullifier, secret, leaf_index, hash_path,
+        pool_id, root, nullifier_hash, 0x1234, 100_0000000, 0, 0,
+    );
+}
+
+#[test]
+fn test_leaf_index_max_boundary() {
+    // Index 2^20 - 1 = 1,048,575 is the maximum valid index
+    let nullifier: Field = 0x11;
+    let secret: Field    = 0x22;
+    let pool_id: Field   = 1;
+    let commitment = hash::compute_commitment(nullifier, secret, pool_id);
+    let leaf_index: Field = 1_048_575;
+
+    let (hash_path, root) = build_path_at(commitment, leaf_index);
+    let nullifier_hash = hash::compute_nullifier_hash(nullifier, root);
+
+    main(
+        nullifier, secret, leaf_index, hash_path,
+        pool_id, root, nullifier_hash, 0x5678, 100_0000000, 0, 0,
+    );
+}
+
+#[test]
+fn test_leaf_index_high_bit_only() {
+    // Index 2^19 = 524,288 -- only the highest valid bit is set
+    let nullifier: Field = 0x33;
+    let secret: Field    = 0x44;
+    let pool_id: Field   = 1;
+    let commitment = hash::compute_commitment(nullifier, secret, pool_id);
+    let leaf_index: Field = 524_288;
+
+    let (hash_path, root) = build_path_at(commitment, leaf_index);
+    let nullifier_hash = hash::compute_nullifier_hash(nullifier, root);
+
+    main(
+        nullifier, secret, leaf_index, hash_path,
+        pool_id, root, nullifier_hash, 0x9ABC, 100_0000000, 0, 0,
+    );
+}
