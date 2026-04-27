@@ -9,6 +9,7 @@ import {
   serializeWithdrawalPublicInputs,
   stellarAddressToField,
 } from "./encoding";
+import { HashMode, assertNotMockHashMode } from "./hash_mode";
 import { WitnessValidationError } from "./errors";
 import {
   assertValidGroth16ProofBytes,
@@ -27,7 +28,13 @@ export type ProvingErrorCode =
   | "ARTIFACT_ERROR"
   | "WITNESS_ERROR"
   | "BACKEND_ERROR"
-  | "FORMATTING_ERROR";
+  | "FORMATTING_ERROR"
+  /**
+   * ZK-106: Thrown when `generate()` is called with a mock-hash witness
+   * (SHA-256 structural stand-in) without an explicit test-only opt-in.
+   * Pass `{ testOnlyAllowMockHash: true }` in tests to bypass this guard.
+   */
+  | "MOCK_HASH_MODE";
 
 /**
  * ProvingError
@@ -148,6 +155,12 @@ export interface VerifyingBackend {
  * Strongly-typed witness ready for the withdrawal circuit entrypoint defined
  * in circuits/withdraw/src/main.nr.  All field values are canonical 64-char
  * hex strings (32 bytes, big-endian, no 0x prefix).
+ *
+ * The `hashMode` field is SDK-only metadata (ZK-106) that records how the
+ * nullifier_hash was derived.  It is stripped by `canonicalizePreparedWitness`
+ * before the witness is passed to the proving backend, so it never enters the
+ * circuit.  `hashMode: 'mock'` means SHA-256 stand-ins were used; the witness
+ * cannot be used with a real prover without rebuilding with a live hash.
  */
 export interface PreparedWitness {
   // Private witnesses
@@ -164,6 +177,13 @@ export interface PreparedWitness {
   relayer: string;
   fee: string;
   denomination: string;
+  /**
+   * ZK-106: Records which hash mode was used to build this witness.
+   * 'mock'  — SHA-256 structural stand-ins (incompatible with real provers).
+   * 'live'  — Real BN254 Poseidon2/Pedersen (required for on-chain proofs).
+   * undefined — Legacy witness built before ZK-106 (treat as 'mock').
+   */
+  hashMode?: HashMode;
 }
 
 export const PREPARED_WITHDRAWAL_WITNESS_SCHEMA = [
@@ -201,6 +221,17 @@ function canonicalizePreparedWitness(witness: PreparedWitness): PreparedWitness 
 export interface WitnessPreparationOptions {
   merkleDepth?: number;
   denomination?: bigint;
+  /**
+   * ZK-106: Explicitly allow a mock-hash witness to reach `ProofGenerator.generate()`.
+   * Set to `true` ONLY in tests.  Production code MUST NOT set this flag — doing
+   * so will produce proof attempts that fail on-chain because the SHA-256-derived
+   * nullifier_hash does not match the Pedersen hash expected by the Noir circuit.
+   *
+   * Recommended pattern:
+   *   import { MOCK_HASH_CONTEXT } from './hash_mode';
+   *   await gen.generate(witness, { testOnlyAllowMockHash: MOCK_HASH_CONTEXT });
+   */
+  testOnlyAllowMockHash?: true;
 }
 
 /**
@@ -247,6 +278,19 @@ export class ProofGenerator {
         "WITNESS_ERROR",
         e,
       );
+    }
+
+    // ZK-106: Guard against mock-hash witnesses entering a real proving backend.
+    // Witness validation runs first so structural errors (bad field length, etc.)
+    // surface as WITNESS_ERROR rather than being masked by this guard.
+    try {
+      assertNotMockHashMode(
+        (witness as PreparedWitness).hashMode,
+        'ProofGenerator.generate',
+        options.testOnlyAllowMockHash === true,
+      );
+    } catch (e: any) {
+      throw new ProvingError(e.message, 'MOCK_HASH_MODE', e);
     }
 
     try {
@@ -345,6 +389,9 @@ export class ProofGenerator {
       relayer: relayerField,
       fee: fieldToHex(fee),
       denomination: fieldToHex(expectedDenomination),
+      // ZK-106: Record that nullifier_hash was derived via SHA-256 (mock).
+      // This stamps the witness so that generate() can enforce the mock-hash guard.
+      hashMode: 'mock' as const,
     };
   }
 

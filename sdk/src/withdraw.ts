@@ -21,6 +21,7 @@ import {
 } from "./encoding";
 import { stableHash32, stableStringify } from "./stable";
 import { WitnessValidationError } from "./errors";
+import { assertCapability, isCapabilitySupported, ZkCapabilities, detectCapabilities } from "./capabilities";
 
 /**
  * WithdrawalRequest
@@ -40,6 +41,12 @@ export interface WithdrawalProofGenerationOptions {
   cacheKey?: string;
   merkleDepth?: number;
   denomination?: bigint;
+  /**
+   * ZK-106: Forward to `ProofGenerator.generate()` to allow a mock-hash witness
+   * through the production guard.  Set to `true` ONLY in tests.
+   * See {@link WitnessPreparationOptions.testOnlyAllowMockHash}.
+   */
+  testOnlyAllowMockHash?: true;
 }
 
 interface WithdrawalCacheMaterial {
@@ -117,6 +124,22 @@ export function buildWithdrawalPublicInputLayout(
 }
 
 /**
+ * Checks if the current runtime can generate withdrawal proofs.
+ *
+ * @returns true if proof generation is supported, false otherwise
+ */
+export function canGenerateWithdrawalProof(): boolean {
+  return isCapabilitySupported('prove');
+}
+
+/**
+ * Gets the current runtime capabilities relevant to withdrawal operations.
+ */
+export function getWithdrawalCapabilities(): ZkCapabilities {
+  return detectCapabilities();
+}
+
+/**
  * generateWithdrawalProof
  *
  * A stable API for generating a withdrawal proof across environments.
@@ -131,6 +154,9 @@ export async function generateWithdrawalProof(
   backend: ProvingBackend,
   options: WithdrawalProofGenerationOptions = {},
 ): Promise<Buffer> {
+  // Fail fast if the runtime doesn't support proving
+  assertCapability('prove');
+
   const { note, merkleProof, recipient, relayer, fee } = request;
 
   // 1. Prepare witness inputs for the circuit
@@ -160,6 +186,7 @@ export async function generateWithdrawalProof(
   const rawProof = await proofGenerator.generate(witness, {
     merkleDepth: options.merkleDepth,
     denomination: options.denomination,
+    testOnlyAllowMockHash: options.testOnlyAllowMockHash,
   });
 
   // 3. Format the proof for the Soroban contract

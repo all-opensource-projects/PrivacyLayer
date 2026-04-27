@@ -1,4 +1,7 @@
 /// <reference types="jest" />
+// HASH_MODE: mock (ZK-106) — `computeNullifierHash` uses SHA-256 structural stand-ins.
+// These tests verify pool-scoped nullifier stability and cross-pool isolation
+// at the structural level.  No proof generation is performed in this suite.
 import { Note } from '../src/note';
 import { MerkleProof, ProofGenerator } from '../src/proof';
 import { computeNullifierHash, poolIdToField, noteScalarToField } from '../src/encoding';
