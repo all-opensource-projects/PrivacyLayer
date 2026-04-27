@@ -128,7 +128,12 @@ export function merkleNodeToField(buf: Buffer): string {
  *
  * The Stellar address is hashed with SHA-256 and the digest is reduced modulo
  * the BN254 field prime, producing a deterministic field-sized value.  This
- * mirrors the on-chain address_decoder used in the Soroban contract.
+ * mirrors the on-chain `address_decoder` used in the Soroban contract, which
+ * also uses SHA-256.  The output is therefore circuit-compatible for the
+ * `recipient` and `relayer` fields.
+ *
+ * @hash-mode SHA-256 (matches on-chain contract — circuit-compatible for address fields)
+ * @see contracts/privacy_pool/src/utils/address_decoder.rs
  */
 export function stellarAddressToField(address: string): string {
   if (!StrKey.isValidEd25519PublicKey(address)) {
@@ -139,19 +144,24 @@ export function stellarAddressToField(address: string): string {
 }
 
 /**
- * Compute the domain-separated nullifier hash: H(DOMAIN, nullifier, root).
+ * Compute the domain-separated nullifier hash: H(DOMAIN, nullifier, pool_id).
  *
  * The withdrawal circuit defines (circuits/lib/src/hash/nullifier.nr):
- *   nullifier_hash = pedersen_hash([NULLIFIER_DOMAIN_SEP, nullifier, root])
+ *   nullifier_hash = pedersen_hash([NULLIFIER_DOMAIN_SEP, nullifier, pool_id])
  *
  * The domain separator prevents cross-domain hash conflation between the
  * nullifier and commitment hash domains.
  *
- * This SDK implementation uses SHA-256 as a structural stand-in for the
- * BN254 Pedersen hash.  Replace with a real BN254 Pedersen implementation
- * (e.g. @noir-lang/barretenberg) before running against a real prover.
- * The input layout (domain ‖ nullifier ‖ root) mirrors the Noir circuit
- * so that both stacks are structurally equivalent.
+ * @mock-hash ZK-106 — This SDK implementation uses **SHA-256 as a structural
+ * stand-in** for the BN254 Pedersen hash used by the Noir circuit.  The input
+ * layout (DOMAIN ‖ nullifier ‖ pool_id) mirrors the circuit, but the hash
+ * function is different, so the output values diverge from what a real prover
+ * expects.  Do NOT use the result of this function in a witness destined for a
+ * real Barretenberg/Noir prover.  See {@link HashMode} and ZK-009/ZK-017 for
+ * the live-hash replacement path.
+ *
+ * Note: the second parameter is named `rootField` for historical reasons but
+ * should be the pool_id field (ZK-035 pool-scoped nullifier).
  */
 export function computeNullifierHash(nullifierField: string, rootField: string): string {
   const input = Buffer.concat([

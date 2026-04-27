@@ -1,8 +1,12 @@
 /// <reference types="jest" />
+// HASH_MODE: mock (ZK-106) — uses SHA-256 structural stand-ins via prepareWitness;
+// testOnlyAllowMockHash: MOCK_HASH_CONTEXT is set on all generateWithdrawalProof() calls.
+
 import { Note } from '../src/note';
 import { InMemoryProofCache, MerkleProof, ProofGenerator, ProvingBackend } from '../src/proof';
 import { buildWithdrawalProofCacheKey, generateWithdrawalProof, WithdrawalRequest } from '../src/withdraw';
 import { stableHash32 } from '../src/stable';
+import { MOCK_HASH_CONTEXT } from '../src/hash_mode';
 
 class CountingBackend implements ProvingBackend {
   public calls = 0;
@@ -47,8 +51,9 @@ describe('Withdrawal proof cache', () => {
     const cache = new InMemoryProofCache();
     const request = makeRequest();
 
-    const first = await generateWithdrawalProof(request, backend, { cache });
-    const second = await generateWithdrawalProof(request, backend, { cache });
+    // HASH_MODE: mock
+    const first = await generateWithdrawalProof(request, backend, { cache, testOnlyAllowMockHash: MOCK_HASH_CONTEXT });
+    const second = await generateWithdrawalProof(request, backend, { cache, testOnlyAllowMockHash: MOCK_HASH_CONTEXT });
 
     expect(backend.calls).toBe(1);
     expect(first.equals(second)).toBe(true);
@@ -58,8 +63,9 @@ describe('Withdrawal proof cache', () => {
     const backend = new CountingBackend();
     const request = makeRequest();
 
-    await generateWithdrawalProof(request, backend);
-    await generateWithdrawalProof(request, backend);
+    // HASH_MODE: mock
+    await generateWithdrawalProof(request, backend, { testOnlyAllowMockHash: MOCK_HASH_CONTEXT });
+    await generateWithdrawalProof(request, backend, { testOnlyAllowMockHash: MOCK_HASH_CONTEXT });
 
     expect(backend.calls).toBe(2);
   });
@@ -91,8 +97,9 @@ describe('Withdrawal proof cache', () => {
 
     expect(keyA).not.toBe(keyB);
 
-    await generateWithdrawalProof(firstRequest, backend, { cache });
-    await generateWithdrawalProof(secondRequest, backend, { cache });
+    // HASH_MODE: mock
+    await generateWithdrawalProof(firstRequest, backend, { cache, testOnlyAllowMockHash: MOCK_HASH_CONTEXT });
+    await generateWithdrawalProof(secondRequest, backend, { cache, testOnlyAllowMockHash: MOCK_HASH_CONTEXT });
 
     expect(backend.calls).toBe(2);
   });

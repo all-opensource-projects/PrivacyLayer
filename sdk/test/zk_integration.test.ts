@@ -1,10 +1,14 @@
 /// <reference types="jest" />
+// HASH_MODE: mock (ZK-106) — uses SHA-256 structural stand-ins via prepareWitness;
+// testOnlyAllowMockHash: MOCK_HASH_CONTEXT is set on all generate() / generateWithdrawalProof() calls.
+
 import { createDeposit } from '../src/deposit';
 import { LocalMerkleTree } from '../src/merkle';
 import { Note } from '../src/note';
 import { PreparedWitness, ProofGenerator, ProvingBackend, VerifyingBackend } from '../src/proof';
 import { extractPublicInputs, generateWithdrawalProof, verifyWithdrawalProof } from '../src/withdraw';
 import { stableHash32, stableStringify } from '../src/stable';
+import { MOCK_HASH_CONTEXT } from '../src/hash_mode';
 
 class IntegrationProvingBackend implements ProvingBackend {
   async generateProof(witness: PreparedWitness): Promise<Uint8Array> {
@@ -71,6 +75,7 @@ describe('SDK ZK integration flow', () => {
     const [leafIndex] = tree.insertBatch([deposit.commitment]);
     const merkleProof = tree.generateProof(leafIndex);
 
+    // HASH_MODE: mock — testOnlyAllowMockHash explicitly acknowledges SHA-256 stand-ins
     const proof = await generateWithdrawalProof(
       {
         note,
@@ -79,7 +84,8 @@ describe('SDK ZK integration flow', () => {
         relayer: fixture.relayer,
         fee: fixture.fee
       },
-      new IntegrationProvingBackend()
+      new IntegrationProvingBackend(),
+      { testOnlyAllowMockHash: MOCK_HASH_CONTEXT },
     );
 
     const witness = await ProofGenerator.prepareWitness(
@@ -122,7 +128,8 @@ describe('SDK ZK integration flow', () => {
           relayer: fixture.relayer,
           fee: fixture.fee
         },
-        new IntegrationProvingBackend()
+        new IntegrationProvingBackend(),
+        { testOnlyAllowMockHash: MOCK_HASH_CONTEXT },
       )
     ).rejects.toThrow('fee cannot exceed amount');
   });

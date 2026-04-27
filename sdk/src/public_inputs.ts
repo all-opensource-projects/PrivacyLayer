@@ -195,6 +195,13 @@ export function encodeDenomination(denomination: bigint): string {
  * ZK-035: Changed from root-bound to pool-scoped nullifier derivation.
  * Spend identifiers remain stable across historical roots for the same note and pool.
  * Cross-pool replays are rejected by construction since pool_id is part of the hash.
+ *
+ * @mock-hash ZK-106 — This implementation uses **SHA-256 as a structural stand-in**
+ * for the BN254 Pedersen hash used by the Noir withdrawal circuit.  The input layout
+ * (DOMAIN ‖ nullifier ‖ pool_id) mirrors the circuit, but the hash function differs,
+ * so outputs diverge from what a real prover expects.  Do NOT use the result in a
+ * witness for a real Barretenberg/Noir prover.  See {@link HashMode} in hash_mode.ts
+ * and ZK-009/ZK-017 for the live-hash replacement path.
  */
 export function encodeNullifierHash(nullifierField: string, poolIdField: string): string {
   const input = Buffer.concat([

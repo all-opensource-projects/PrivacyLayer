@@ -13,6 +13,9 @@ import {
   WITHDRAWAL_PUBLIC_INPUT_SCHEMA,
 } from "../src/encoding";
 import { buildWithdrawalPublicInputLayout } from "../src/withdraw";
+// HASH_MODE: mock (ZK-106) — `computeNullifierHash` uses SHA-256 structural stand-ins.
+// Golden vector tests verify field encoding, schema order, and structural correctness.
+// No proof generation is performed; these tests are not circuit-compatibility checks.
 
 // ---------------------------------------------------------------------------
 // Load golden fixture
