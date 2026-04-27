@@ -9,6 +9,7 @@ import {
   ProvingBackend,
 } from '../src/proof';
 import { buildWithdrawalProofCacheKey, WithdrawalRequest } from '../src/withdraw';
+import { MOCK_HASH_CONTEXT } from '../src/hash_mode';
 
 const G = 'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF';
 const RELAYER = 'GBZXN7PIRZGNMHGAH5Q4D5B4H3B7BWQ7M4CW67A4V6APSLW7M4Q6TLE5';
@@ -71,7 +72,8 @@ describe('Privacy surface regression', () => {
     expect(() => Note.deserialize(`${legacy}:debug-tag`)).toThrow('Invalid note format');
   });
 
-  it('prepareWitness emits only the circuit-facing witness schema', async () => {
+  it('prepareWitness emits circuit-facing schema fields plus hashMode metadata (ZK-106)', async () => {
+    // HASH_MODE: mock (ZK-106) — SHA-256 stand-ins; hashMode: 'mock' is stamped on the witness
     const witness = await ProofGenerator.prepareWitness(
       makeNote(),
       makeMerkleProof(),
@@ -80,13 +82,18 @@ describe('Privacy surface regression', () => {
       5n
     );
 
-    expect(Object.keys(witness).sort()).toEqual([...PREPARED_WITHDRAWAL_WITNESS_SCHEMA].sort());
+    // ZK-106: hashMode is the only permitted non-circuit metadata field on the witness.
+    // Circuit-facing fields must exactly match PREPARED_WITHDRAWAL_WITNESS_SCHEMA.
+    const circuitFields = Object.keys(witness).filter((k) => k !== 'hashMode');
+    expect(circuitFields.sort()).toEqual([...PREPARED_WITHDRAWAL_WITNESS_SCHEMA].sort());
+    expect(witness).toHaveProperty('hashMode', 'mock');
     expect(witness).not.toHaveProperty('path_indices');
     expect(witness).not.toHaveProperty('commitment');
     expect(witness).not.toHaveProperty('backup');
   });
 
   it('ProofGenerator.generate strips extra metadata before sending the witness to the backend', async () => {
+    // HASH_MODE: mock (ZK-106) — testOnlyAllowMockHash explicitly acknowledges SHA-256 stand-ins
     let backendWitness: PreparedWitness | undefined;
     const backend: ProvingBackend = {
       async generateProof(witness: PreparedWitness): Promise<Uint8Array> {
@@ -110,10 +117,12 @@ describe('Privacy surface regression', () => {
       exported_note: makeNote().exportBackup(),
     };
 
-    await new ProofGenerator(backend).generate(polluted);
+    await new ProofGenerator(backend).generate(polluted, { testOnlyAllowMockHash: MOCK_HASH_CONTEXT });
 
     expect(backendWitness).toBeDefined();
+    // ZK-106: hashMode is stripped by canonicalizePreparedWitness; backend sees only circuit fields
     expect(Object.keys(backendWitness!).sort()).toEqual([...PREPARED_WITHDRAWAL_WITNESS_SCHEMA].sort());
+    expect(backendWitness).not.toHaveProperty('hashMode');
     expect(backendWitness).not.toHaveProperty('recipient_strkey');
     expect(backendWitness).not.toHaveProperty('debug_label');
     expect(backendWitness).not.toHaveProperty('exported_note');

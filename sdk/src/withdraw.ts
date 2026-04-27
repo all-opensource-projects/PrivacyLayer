@@ -39,6 +39,12 @@ export interface WithdrawalProofGenerationOptions {
   cache?: ProofCache;
   cacheKey?: string;
   merkleDepth?: number;
+  /**
+   * ZK-106: Forward to `ProofGenerator.generate()` to allow a mock-hash witness
+   * through the production guard.  Set to `true` ONLY in tests.
+   * See {@link WitnessPreparationOptions.testOnlyAllowMockHash}.
+   */
+  testOnlyAllowMockHash?: true;
 }
 
 interface WithdrawalCacheMaterial {
@@ -155,6 +161,7 @@ export async function generateWithdrawalProof(
   const proofGenerator = new ProofGenerator(backend);
   const rawProof = await proofGenerator.generate(witness, {
     merkleDepth: options.merkleDepth,
+    testOnlyAllowMockHash: options.testOnlyAllowMockHash,
   });
 
   // 3. Format the proof for the Soroban contract

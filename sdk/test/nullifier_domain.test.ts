@@ -6,6 +6,11 @@
  * (circuits/lib/src/hash/nullifier.nr), ensuring both stacks produce hashes
  * in the same domain and that the nullifier domain is disjoint from the
  * commitment domain.
+ *
+ * HASH_MODE: mock (ZK-106) — `computeNullifierHash` uses SHA-256 as a structural
+ * stand-in for the BN254 Pedersen hash used by the Noir circuit.  These tests
+ * verify domain separation and structural layout, NOT circuit-compatible output
+ * values.  No proof generation is performed in this suite.
  */
 
 import { createHash } from 'crypto';

@@ -1,3 +1,6 @@
+// HASH_MODE: mock (ZK-106) — uses SHA-256 structural stand-ins via prepareWitness;
+// testOnlyAllowMockHash: MOCK_HASH_CONTEXT is set on the generateWithdrawalProof() call that is expected to succeed.
+
 import { Note } from "../src/note";
 import { ProofGenerator } from "../src/proof";
 import {
@@ -8,6 +11,7 @@ import {
 import { generateWithdrawalProof } from "../src/withdraw";
 import { WitnessValidationError } from "../src/errors";
 import { GROTH16_PROOF_BYTE_LENGTH } from "../src/witness";
+import { MOCK_HASH_CONTEXT } from "../src/hash_mode";
 
 const RECIPIENT = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
 const POOL_ID = "11".repeat(32);
@@ -91,7 +95,8 @@ describe("Offline merkle depth support", () => {
       generateWithdrawalProof(
         { note, merkleProof: proof, recipient: RECIPIENT },
         backend,
-        { merkleDepth: depth },
+        // HASH_MODE: mock — testOnlyAllowMockHash acknowledges SHA-256 stand-ins
+        { merkleDepth: depth, testOnlyAllowMockHash: MOCK_HASH_CONTEXT },
       ),
     ).resolves.toBeInstanceOf(Buffer);
   });

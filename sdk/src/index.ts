@@ -2,6 +2,7 @@ export * from './backends';
 export * from './benchmark';
 export * from './encoding';
 export * from './errors';
+export * from './hash_mode';
 export * from './merkle';
 export * from './note';
 export * from './proof';
