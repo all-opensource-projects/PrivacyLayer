@@ -121,6 +121,20 @@ export function getProvingKeyPath(circuitName: string, version: string = ZK_ARTI
 }
 
 /**
+ * Get the release bundle directory for a specific version.
+ */
+export function getReleaseBundleDir(version: string = ZK_ARTIFACT_VERSION): string {
+  return join(getVersionedArtifactsDir(version), 'bundles');
+}
+
+/**
+ * Get the release bundle file path for a specific version.
+ */
+export function getReleaseBundlePath(version: string = ZK_ARTIFACT_VERSION): string {
+  return join(getReleaseBundleDir(version), 'release-bundle.json');
+}
+
+/**
  * Known circuit names in the PrivacyLayer system.
  */
 export const CIRCUIT_NAMES = {
@@ -156,6 +170,8 @@ export const ARTIFACT_LAYOUT = {
   getCircuitProvingKeysDir,
   getVerificationKeyPath,
   getProvingKeyPath,
+  getReleaseBundleDir,
+  getReleaseBundlePath,
   CIRCUIT_NAMES,
   getKnownCircuitPath,
 } as const;

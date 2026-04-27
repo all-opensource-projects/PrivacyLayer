@@ -44,11 +44,12 @@ echo "📦 Compiling circuits..."
 for pkg in commitment withdraw merkle; do
   echo "  → Building $pkg..."
   (cd "circuits" && nargo compile --package "$pkg")
-  cp "circuits/target/$pkg.json" "artifacts/zk/"
+  cp "circuits/target/$pkg.json" "$ARTIFACTS_DIR/circuits/$pkg/$pkg.json"
+  cp "circuits/target/$pkg.json" "artifacts/zk/$pkg.json"
 done
 
 echo "🧪 Regenerating shared commitment vectors..."
-node scripts/generate_commitment_vectors.mjs
+node scripts/generate_commitment_vectors.mjs "$ZK_VERSION"
 
 echo "📝 Refreshing manifest..."
 node scripts/refresh_manifest.mjs "$ZK_VERSION"
