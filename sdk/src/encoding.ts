@@ -200,6 +200,7 @@ export const WITHDRAWAL_PUBLIC_INPUT_SCHEMA = [
   'amount',
   'relayer',
   'fee',
+  'denomination',
 ] as const;
 
 export type WithdrawalPublicInputKey = (typeof WITHDRAWAL_PUBLIC_INPUT_SCHEMA)[number];
