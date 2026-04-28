@@ -23,6 +23,7 @@ import {
 } from "./encoding";
 import { stableHash32, stableStringify } from "./stable";
 import { WitnessValidationError } from "./errors";
+import { assertCapability, isCapabilitySupported, ZkCapabilities, detectCapabilities } from "./capabilities";
 
 /**
  * WithdrawalRequest
@@ -41,6 +42,13 @@ export interface WithdrawalProofGenerationOptions {
   cache?: ProofCache;
   cacheKey?: string;
   merkleDepth?: number;
+  denomination?: bigint;
+  /**
+   * ZK-106: Forward to `ProofGenerator.generate()` to allow a mock-hash witness
+   * through the production guard.  Set to `true` ONLY in tests.
+   * See {@link WitnessPreparationOptions.testOnlyAllowMockHash}.
+   */
+  testOnlyAllowMockHash?: true;
 }
 
 export interface CanonicalPoolContext {
@@ -75,7 +83,7 @@ function buildCacheMaterial(
     },
     publicInputs: serialized.values,
     pool: request.note.poolId,
-    denomination: witness.amount,
+    denomination: witness.denomination,
   };
 }
 
@@ -152,6 +160,9 @@ export async function generateWithdrawalProof(
   backend: ProvingBackend,
   options: WithdrawalProofGenerationOptions = {},
 ): Promise<Buffer> {
+  // Fail fast if the runtime doesn't support proving
+  assertCapability('prove');
+
   const { note, merkleProof, recipient, relayer, fee } = request;
 
   // 1. Prepare witness inputs for the circuit
@@ -161,7 +172,10 @@ export async function generateWithdrawalProof(
     recipient,
     relayer,
     fee,
-    { merkleDepth: options.merkleDepth },
+    { 
+      merkleDepth: options.merkleDepth,
+      denomination: options.denomination,
+    },
   );
 
   const key =
@@ -177,6 +191,8 @@ export async function generateWithdrawalProof(
   const proofGenerator = new ProofGenerator(backend);
   const rawProof = await proofGenerator.generate(witness, {
     merkleDepth: options.merkleDepth,
+    denomination: options.denomination,
+    testOnlyAllowMockHash: options.testOnlyAllowMockHash,
   });
 
   // 3. Format the proof for the Soroban contract
