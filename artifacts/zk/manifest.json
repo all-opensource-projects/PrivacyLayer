@@ -22,8 +22,10 @@
         "recipient",
         "amount",
         "relayer",
-        "fee"
-      ]
+        "fee",
+        "denomination"
+      ],
+      "public_input_count": 8
     },
     "commitment": {
       "circuit_id": "commitment",
