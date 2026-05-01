@@ -23,6 +23,122 @@ use crate::types::errors::Error;
 use crate::types::state::{Proof, PublicInputs, SchemaVersion, VerifyingKey};
 
 // ──────────────────────────────────────────────────────────────
+// Structural Guards (ZK-075)
+// ──────────────────────────────────────────────────────────────
+
+/// Expected byte lengths for BN254 curve points
+const G1_POINT_BYTE_LENGTH: u32 = 64;
+const G2_POINT_BYTE_LENGTH: u32 = 128;
+const FIELD_ELEMENT_BYTE_LENGTH: u32 = 32;
+const EXPECTED_PUBLIC_INPUT_COUNT: u32 = 8;
+const EXPECTED_IC_VECTOR_LENGTH: u32 = EXPECTED_PUBLIC_INPUT_COUNT + 1; // IC[0] + 8 inputs
+
+/// Validates proof structure before deserialization (ZK-075).
+///
+/// Checks byte lengths of all proof components to fail fast on malformed payloads
+/// before touching elliptic curve operations.
+///
+/// # Errors
+/// - `MalformedProofA` if proof.a is not 64 bytes
+/// - `MalformedProofB` if proof.b is not 128 bytes
+/// - `MalformedProofC` if proof.c is not 64 bytes
+fn validate_proof_structure(proof: &Proof) -> Result<(), Error> {
+    // Validate G1 point A (64 bytes)
+    if proof.a.len() != G1_POINT_BYTE_LENGTH {
+        return Err(Error::MalformedProofA);
+    }
+
+    // Validate G2 point B (128 bytes)
+    if proof.b.len() != G2_POINT_BYTE_LENGTH {
+        return Err(Error::MalformedProofB);
+    }
+
+    // Validate G1 point C (64 bytes)
+    if proof.c.len() != G1_POINT_BYTE_LENGTH {
+        return Err(Error::MalformedProofC);
+    }
+
+    Ok(())
+}
+
+/// Validates verifying key structure before deserialization (ZK-075).
+///
+/// Checks byte lengths and vector counts to fail fast on malformed VKs
+/// before touching elliptic curve operations.
+///
+/// # Errors
+/// - `VkAlphaG1WrongLength` if alpha_g1 is not 64 bytes
+/// - `VkBetaG2WrongLength` if beta_g2 is not 128 bytes
+/// - `VkGammaG2WrongLength` if gamma_g2 is not 128 bytes
+/// - `VkDeltaG2WrongLength` if delta_g2 is not 128 bytes
+/// - `VkIcVectorWrongLength` if gamma_abc_g1 doesn't have exactly 9 elements
+/// - `VkIcPointWrongLength` if any IC point is not 64 bytes
+fn validate_vk_structure(vk: &VerifyingKey) -> Result<(), Error> {
+    // Validate G1 point alpha (64 bytes)
+    if vk.alpha_g1.len() != G1_POINT_BYTE_LENGTH {
+        return Err(Error::VkAlphaG1WrongLength);
+    }
+
+    // Validate G2 point beta (128 bytes)
+    if vk.beta_g2.len() != G2_POINT_BYTE_LENGTH {
+        return Err(Error::VkBetaG2WrongLength);
+    }
+
+    // Validate G2 point gamma (128 bytes)
+    if vk.gamma_g2.len() != G2_POINT_BYTE_LENGTH {
+        return Err(Error::VkGammaG2WrongLength);
+    }
+
+    // Validate G2 point delta (128 bytes)
+    if vk.delta_g2.len() != G2_POINT_BYTE_LENGTH {
+        return Err(Error::VkDeltaG2WrongLength);
+    }
+
+    // Validate IC vector length (must be exactly 9: IC[0] + 8 public inputs)
+    if vk.gamma_abc_g1.len() != EXPECTED_IC_VECTOR_LENGTH {
+        return Err(Error::VkIcVectorWrongLength);
+    }
+
+    // Validate each IC point is 64 bytes
+    for i in 0..vk.gamma_abc_g1.len() {
+        let ic_point = vk.gamma_abc_g1.get(i).ok_or(Error::MalformedVerifyingKey)?;
+        if ic_point.len() != G1_POINT_BYTE_LENGTH {
+            return Err(Error::VkIcPointWrongLength);
+        }
+    }
+
+    Ok(())
+}
+
+/// Validates public inputs structure before deserialization (ZK-075).
+///
+/// Checks that all public input fields are exactly 32 bytes (field elements).
+///
+/// # Errors
+/// - `PublicInputWrongLength` if any public input is not 32 bytes
+fn validate_public_inputs_structure(pub_inputs: &PublicInputs) -> Result<(), Error> {
+    // All public inputs must be 32-byte field elements
+    let inputs: [&BytesN<32>; 8] = [
+        &pub_inputs.pool_id,
+        &pub_inputs.root,
+        &pub_inputs.nullifier_hash,
+        &pub_inputs.recipient,
+        &pub_inputs.amount,
+        &pub_inputs.relayer,
+        &pub_inputs.fee,
+        &pub_inputs.denomination,
+    ];
+
+    for input in inputs.iter() {
+        if input.len() != FIELD_ELEMENT_BYTE_LENGTH {
+            return Err(Error::PublicInputWrongLength);
+        }
+    }
+
+    Ok(())
+}
+
+// ──────────────────────────────────────────────────────────────
 // Public Input Linear Combination
 // ──────────────────────────────────────────────────────────────
 
@@ -114,18 +230,27 @@ fn compute_vk_x(
 /// ZK-074: Validates VK metadata before expensive pairing operations to fail fast
 /// on mismatched circuit IDs or public input counts.
 ///
+/// ZK-075: Validates structural invariants (byte lengths, vector counts) before
+/// deserialization to fail fast on malformed payloads.
+///
 /// # Returns
 /// - `Ok(true)` if proof is valid
 /// - `Ok(false)` if pairing check fails
-/// - `Err(...)` on malformed proof/VK or metadata mismatch
+/// - `Err(...)` on malformed proof/VK/public inputs (structural errors or metadata mismatch)
 pub fn verify_proof(
     env: &Env,
     vk: &VerifyingKey,
     proof: &Proof,
     pub_inputs: &PublicInputs,
 ) -> Result<bool, Error> {
-    // Step 0: Validate VK metadata before expensive operations (ZK-074)
+    // Step 0a: Structural validation before deserialization (ZK-075)
+    validate_proof_structure(proof)?;
+    validate_vk_structure(vk)?;
+    validate_public_inputs_structure(pub_inputs)?;
+
+    // Step 0b: Validate VK metadata before expensive operations (ZK-074)
     validate_vk_metadata(vk, "withdraw")?;
+
     let bn254 = env.crypto().bn254();
 
     // Step 1: Compute vk_x (linear combination of public inputs)
@@ -201,11 +326,11 @@ pub fn validate_schema_version(
     // Parse the expected version string
     let expected = SchemaVersion::from_string(expected_version_str)
         .map_err(|_| Error::InvalidSchemaVersion)?;
-    
+
     // Check compatibility using semantic versioning rules
     if !proof_schema.is_compatible_with(&expected) {
         return Err(Error::SchemaVersionMismatch);
     }
-    
+
     Ok(())
 }

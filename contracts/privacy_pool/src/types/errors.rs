@@ -61,14 +61,30 @@ pub enum Error {
     CircuitIdMismatch = 52,
     /// Public input count mismatch between proof and VK
     PublicInputCountMismatch = 53,
+    /// VK alpha_g1 has wrong byte length (expected 64)
+    VkAlphaG1WrongLength = 54,
+    /// VK beta_g2 has wrong byte length (expected 128)
+    VkBetaG2WrongLength = 55,
+    /// VK gamma_g2 has wrong byte length (expected 128)
+    VkGammaG2WrongLength = 56,
+    /// VK delta_g2 has wrong byte length (expected 128)
+    VkDeltaG2WrongLength = 57,
+    /// VK gamma_abc_g1 vector has wrong length (expected 9 for 8 public inputs)
+    VkIcVectorWrongLength = 58,
+    /// VK gamma_abc_g1 contains a point with wrong byte length (expected 64)
+    VkIcPointWrongLength = 59,
 
     // ── Proof Format ──────────────────────────────────
-    /// Proof point A has wrong length
+    /// Proof point A has wrong length (expected 64)
     MalformedProofA = 60,
-    /// Proof point B has wrong length
+    /// Proof point B has wrong length (expected 128)
     MalformedProofB = 61,
-    /// Proof point C has wrong length
+    /// Proof point C has wrong length (expected 64)
     MalformedProofC = 62,
+    
+    // ── Public Inputs ──────────────────────────────────
+    /// Public input field has wrong byte length (expected 32)
+    PublicInputWrongLength = 63,
 
     // ── BN254 Arithmetic ──────────────────────────────
     /// BN254 point is not on curve
